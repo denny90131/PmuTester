@@ -1,0 +1,842 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PmuApp"
+        xmlns:c="clr-namespace:PmuApp.Controls"
+        mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="860"
+        x:Class="PmuApp.MainWindow"
+        x:DataType="local:MainViewModel"
+        Icon="/Assets/pmu.ico"
+        Title="{Binding WindowTitle}"
+        Width="1360" Height="880" MinWidth="1040" MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource PmuWindowBg}">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="F5" Command="{Binding ToggleConnectionCommand}" />
+        <KeyBinding Gesture="Ctrl+R" Command="{Binding ToggleRecordingCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveSettingsCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+C" Command="{Binding CopySnapshotCommand}" />
+    </Window.KeyBindings>
+
+    <DockPanel>
+
+        <!-- ═══════════════ 連線列 ═══════════════ -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource PmuTopBarBg}"
+                BorderBrush="{DynamicResource PmuCardBorder}" BorderThickness="0,0,0,1" Padding="18,12,18,10">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                <WrapPanel ItemSpacing="10" LineSpacing="8" VerticalAlignment="Bottom">
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="常用連線" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <ComboBox Width="170" ItemsSource="{Binding SavedConnections}"
+                                      SelectedItem="{Binding SelectedProfile}"
+                                      PlaceholderText="選擇已儲存的 PMU…"
+                                      IsEnabled="{Binding CanEditTarget}"
+                                      ToolTip.Tip="成功連線過的目標會自動加入這裡（最多 10 筆）">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="local:ConnectionProfile">
+                                        <TextBlock Text="{Binding DisplayText}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="1" Content="✕" Margin="4,0,0,0" Padding="8,5"
+                                    Command="{Binding RemoveProfileCommand}" CommandParameter="{Binding SelectedProfile}"
+                                    IsEnabled="{Binding CanEditTarget}"
+                                    ToolTip.Tip="從常用連線移除目前選取的項目" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="PMU 位址 (IP / 主機名稱)" />
+                        <TextBox x:Name="HostBox" Width="180" Text="{Binding HostText}" PlaceholderText="例如 192.168.1.100"
+                                 IsEnabled="{Binding CanEditTarget}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="Port" />
+                        <NumericUpDown Width="126" Value="{Binding PortValue}" Minimum="1" Maximum="65535" Increment="1"
+                                       FormatString="0" IsEnabled="{Binding CanEditTarget}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="IDCODE" />
+                        <NumericUpDown Width="132" Value="{Binding IdCodeValue}" Minimum="0" Maximum="65535" Increment="1"
+                                       FormatString="0" IsEnabled="{Binding CanEditTarget}"
+                                       ToolTip.Tip="PMU 設定的 C37.118 Stream IDCODE，必須和 PMU 一致" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="指令版本" />
+                        <ComboBox Width="118" ItemsSource="{Binding CommandVersionChoices}"
+                                  SelectedIndex="{Binding CommandVersionIndex}" IsEnabled="{Binding CanEditTarget}"
+                                  ToolTip.Tip="一般選「自動」。PMU 只認 2005 版指令時可固定 2005，省掉約 3 秒的自動切換" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Classes="label" Text="名稱（選填）" />
+                        <TextBox Width="120" Text="{Binding DescriptionText}" PlaceholderText="例如 變電所A-主PMU"
+                                 IsEnabled="{Binding CanEditTarget}" />
+                    </StackPanel>
+                    <Button Classes="accent" Height="34" MinWidth="128" VerticalAlignment="Bottom"
+                            HorizontalContentAlignment="Center" FontWeight="SemiBold"
+                            Content="{Binding ConnectButtonText}" Command="{Binding ToggleConnectionCommand}"
+                            ToolTip.Tip="連線 / 中斷 (F5)" />
+                </WrapPanel>
+
+                <!-- 連線狀態 -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Spacing="4" Margin="16,0,0,6">
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Border Classes="pill" Classes.ok="{Binding IsStateConnected}"
+                                Classes.warn="{Binding IsStateConnecting}" Classes.bad="{Binding IsStateDisconnected}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse Classes="dot" Classes.ok="{Binding IsStateConnected}"
+                                         Classes.warn="{Binding IsStateConnecting}" Classes.bad="{Binding IsStateDisconnected}" />
+                                <TextBlock Text="{Binding StateText}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="pill ok" IsVisible="{Binding IsRecording}">
+                            <TextBlock Text="● REC" />
+                        </Border>
+                        <Border Classes="pill bad" IsVisible="{Binding ActiveAlarmText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <TextBlock Text="{Binding ActiveAlarmText}" />
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- 第二列：連線狀態說明 / 輸入錯誤 -->
+                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" Margin="2,8,0,0">
+                    <TextBlock Classes="muted" Text="{Binding StateDetail}" TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding StateDetail}" />
+                </StackPanel>
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="err" Margin="2,8,0,0" TextWrapping="Wrap"
+                           Background="{DynamicResource PmuTopBarBg}"
+                           Text="{Binding InputError, StringFormat='⚠ {0}'}"
+                           IsVisible="{Binding InputError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════ 狀態列 ═══════════════ -->
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource PmuTopBarBg}"
+                BorderBrush="{DynamicResource PmuCardBorder}" BorderThickness="0,1,0,0" Padding="18,6">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button Content="{Binding RecordButtonText}" Command="{Binding ToggleRecordingCommand}" Padding="10,3"
+                            ToolTip.Tip="把收到的資料寫成 CSV（Ctrl+R）。可在「設定」頁調整降頻與欄位" />
+                    <Button Content="📂" Command="{Binding OpenRecordingFolderCommand}" Padding="8,3" ToolTip.Tip="開啟錄製檔資料夾" />
+                    <TextBlock Text="{Binding RecordingText}" VerticalAlignment="Center" Classes="muted" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding LastEventText}" Classes="muted" VerticalAlignment="Center"
+                           Margin="20,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding LastEventText}" />
+                <TextBlock Grid.Column="2" Classes="muted" VerticalAlignment="Center"
+                           Text="F5 連線/中斷 · Ctrl+R 錄製 · Ctrl+Shift+C 複製數值 · Ctrl+S 儲存設定" />
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════ KPI 列 ═══════════════ -->
+        <Grid DockPanel.Dock="Top" Margin="18,14,18,0" ColumnDefinitions="1.35*,1.2*,1*,1.25*,1*,1*" ColumnSpacing="12">
+            <Border Classes="card" Padding="14,10">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="label" Text="站台" />
+                    <ComboBox ItemsSource="{Binding StationList}" SelectedIndex="{Binding SelectedStationIndex}"
+                              HorizontalAlignment="Stretch" PlaceholderText="連線後自動列出" />
+                    <TextBlock Classes="muted" Text="{Binding NominalText}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="card" Classes.alarm="{Binding FrequencyAlarmActive}" Padding="14,10">
+                <StackPanel>
+                    <TextBlock Classes="label" Text="頻率" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Classes="kpi" Text="{Binding FrequencyText}" />
+                        <TextBlock Classes="kpiUnit" Text="Hz" />
+                    </StackPanel>
+                    <TextBlock Classes="muted" Text="{Binding FrequencyDeviationText}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Classes="card" Classes.alarm="{Binding RocofAlarmActive}" Padding="14,10">
+                <StackPanel>
+                    <TextBlock Classes="label" Text="ROCOF (df/dt)" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Classes="kpi" Text="{Binding RocofText}" />
+                        <TextBlock Classes="kpiUnit" Text="Hz/s" />
+                    </StackPanel>
+                    <TextBlock Classes="muted" Text="{Binding RocofThreshold, StringFormat='門檻 ±{0} Hz/s'}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Classes="card" Padding="14,10">
+                <StackPanel>
+                    <TextBlock Classes="label" Text="PMU 時間戳" />
+                    <TextBlock Classes="kpi" FontSize="24" Margin="0,3,0,0" Text="{Binding TimestampText}" />
+                    <TextBlock Classes="muted" Text="{Binding DateText}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="4" Classes="card" Padding="14,10">
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="label" Text="資料品質" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Classes="pill" Classes.ok="{Binding IsValid}" Classes.bad="{Binding !IsValid}"
+                                IsVisible="{Binding HasData}" ToolTip.Tip="IsValid：PMU 沒有回報資料錯誤，而且 ROCOF 不是缺值">
+                            <TextBlock Text="{Binding ValidText}" />
+                        </Border>
+                        <Border Classes="pill" Classes.ok="{Binding !SyncLost}" Classes.warn="{Binding SyncLost}"
+                                IsVisible="{Binding HasData}" ToolTip.Tip="STAT bit 13。未對時時資料仍可用，但時間戳不可信">
+                            <TextBlock Text="{Binding SyncText}" />
+                        </Border>
+                        <TextBlock Classes="muted" Text="--" IsVisible="{Binding !HasData}" />
+                    </StackPanel>
+                    <TextBlock Classes="muted mono" Text="{Binding StatHex, StringFormat='STAT {0}'}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="5" Classes="card" Padding="14,10">
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="label" Text="接收速率" />
+                    <TextBlock Classes="kpi" FontSize="22" Text="{Binding FpsText}" />
+                    <TextBlock Classes="muted" Text="{Binding LatencyText, StringFormat='傳輸延遲 {0}'}"
+                               ToolTip.Tip="收到時間 − PMU 時間戳（PMU 與本機都需對時才有意義）" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ═══════════════ 分頁 ═══════════════ -->
+        <TabControl Margin="12,6,12,8" SelectedIndex="{Binding SelectedTabIndex}">
+
+            <!-- ───── 即時量測 ───── -->
+            <TabItem Header="即時量測">
+                <Grid>
+                    <!-- 尚未連線時的引導 -->
+                    <Border Classes="card" IsVisible="{Binding !HasCfg}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="40,30" MaxWidth="640">
+                        <StackPanel Spacing="12">
+                            <TextBlock Classes="cardTitle" FontSize="20" Text="開始監看 PMU" />
+                            <TextBlock TextWrapping="Wrap" Text="1. 在上方輸入 PMU 的 IP、Port（預設 4712）與 IDCODE。" />
+                            <TextBlock TextWrapping="Wrap" Text="2. 按「▶ 連線」或 F5。程式會自動取得設定檔 (CFG-2) 並開啟資料流，斷線也會自動重連。" />
+                            <TextBlock TextWrapping="Wrap" Text="3. 連線成功後，這裡會顯示相量圖與所有相量；其他分頁有趨勢圖、類比與 DI、設定檔內容、通訊統計與事件紀錄。" />
+                            <TextBlock Classes="muted" TextWrapping="Wrap" Text="連不上？到「事件紀錄」頁看斷線原因；PMU 只認 2005 版指令時，「指令版本」可改選 2005。" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid IsVisible="{Binding HasCfg}" Margin="6,10,6,4" ColumnDefinitions="400,*" ColumnSpacing="12">
+                        <!-- 相量圖 -->
+                        <Border Classes="card">
+                            <DockPanel>
+                                <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                                    <TextBlock Classes="cardTitle" Text="相量圖" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                        <Button Content="全部" Padding="8,3" FontSize="12" Command="{Binding ToggleAllPhasorsCommand}" />
+                                        <Button Content="電壓" Padding="8,3" FontSize="12" Command="{Binding ShowOnlyVoltagesCommand}" />
+                                        <Button Content="電流" Padding="8,3" FontSize="12" Command="{Binding ShowOnlyCurrentsCommand}" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock DockPanel.Dock="Bottom" Classes="muted" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="0° 在右方、逆時針為正。電壓與電流各自以最大幅值為滿刻度。表格左側勾選可隱藏個別相量。" />
+                                <c:PhasorDiagram Items="{Binding PhasorList}" Version="{Binding DiagramVersion}"
+                                                 GridBrush="{DynamicResource PmuGrid}" TextBrush="{DynamicResource PmuMuted}"
+                                                 MagnitudeDecimals="{Binding Settings.Ui.MagnitudeDecimals}" MinHeight="300" />
+                            </DockPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="12">
+                                <!-- 相量表 -->
+                                <Border Classes="card">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Classes="cardTitle" Text="{Binding StationTitle}" />
+                                            <Button Grid.Column="1" Content="📋 複製數值" Padding="10,3" FontSize="12"
+                                                    Command="{Binding CopySnapshotCommand}" ToolTip.Tip="複製目前站台所有數值（Tab 分隔，可直接貼到 Excel）" />
+                                        </Grid>
+                                        <Grid ColumnDefinitions="30,18,*,60,140,110,120,120" Margin="0,6,0,2">
+                                            <TextBlock Grid.Column="2" Classes="muted" Text="相量名稱" />
+                                            <TextBlock Grid.Column="3" Classes="muted" Text="類型" />
+                                            <TextBlock Grid.Column="4" Classes="muted" Text="幅值" HorizontalAlignment="Right" />
+                                            <TextBlock Grid.Column="5" Classes="muted" Text="相角" HorizontalAlignment="Right" />
+                                            <TextBlock Grid.Column="6" Classes="muted" Text="實部" HorizontalAlignment="Right" />
+                                            <TextBlock Grid.Column="7" Classes="muted" Text="虛部" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Separator Margin="0" />
+                                        <ItemsControl ItemsSource="{Binding PhasorList}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="local:PhasorItem">
+                                                    <Grid ColumnDefinitions="30,18,*,60,140,110,120,120" Height="34">
+                                                        <CheckBox IsChecked="{Binding IsVisibleInDiagram}" MinWidth="0" Padding="0"
+                                                                  ToolTip.Tip="在相量圖中顯示" />
+                                                        <Ellipse Grid.Column="1" Width="10" Height="10" Fill="{Binding Brush}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                                                        <TextBlock Grid.Column="3" Text="{Binding KindText}" VerticalAlignment="Center" Classes="muted" />
+                                                        <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
+                                                            <TextBlock Text="{Binding MagnitudeText}" Classes="mono" FontSize="14" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding Unit}" Classes="muted" />
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="5" Text="{Binding AngleText}" Classes="mono" FontSize="14"
+                                                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="6" Text="{Binding RealText}" Classes="mono muted"
+                                                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="7" Text="{Binding ImaginaryText}" Classes="mono muted"
+                                                                   HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Classes="muted" Text="此站台沒有相量通道" IsVisible="{Binding !PhasorList.Count}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- STAT 拆解 -->
+                                <Border Classes="card">
+                                    <StackPanel Spacing="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Classes="cardTitle" Text="狀態字 STAT" />
+                                            <TextBlock Classes="mono muted" Text="{Binding StatHex}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <ItemsControl ItemsSource="{Binding StatFlags}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="local:StatFlagItem">
+                                                    <Grid ColumnDefinitions="110,*" Margin="0,3,12,3">
+                                                        <TextBlock Classes="muted" Text="{Binding Name}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1" Classes="flagValue" Classes.bad="{Binding IsBad}" Classes.notice="{Binding IsNotice}"
+                                                                   Text="{Binding ValueText}" TextWrapping="Wrap" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 多站台摘要（PDC） -->
+                                <Border Classes="card" IsVisible="{Binding HasMultipleStations}">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Classes="cardTitle" Text="所有站台" />
+                                        <ItemsControl ItemsSource="{Binding StationSummaries}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="local:StationSummaryItem">
+                                                    <Grid ColumnDefinitions="*,90,150,150,80,80" Height="30">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1" Classes="muted" Text="{Binding IdCode, StringFormat='ID {0}'}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="2" Classes="mono" Text="{Binding FrequencyText}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="3" Classes="mono" Text="{Binding RocofText}" VerticalAlignment="Center" />
+                                                        <Border Grid.Column="4" Classes="pill" Classes.ok="{Binding IsValid}" Classes.bad="{Binding !IsValid}">
+                                                            <TextBlock Text="有效" />
+                                                        </Border>
+                                                        <TextBlock Grid.Column="5" Classes="mono muted" Text="{Binding StatText}" VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ───── 趨勢 ───── -->
+            <TabItem Header="趨勢圖">
+                <DockPanel Margin="6,10,6,4">
+                    <Border DockPanel.Dock="Top" Classes="card" Padding="14,8" Margin="0,0,0,10">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Text="時間範圍" VerticalAlignment="Center" />
+                            <ComboBox Width="110" ItemsSource="{Binding TrendWindowChoices}" SelectedItem="{Binding TrendWindowSeconds}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="x:Int32">
+                                        <TextBlock Text="{Binding StringFormat='最近 {0} 秒'}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <ToggleButton Content="⏸ 暫停" IsChecked="{Binding TrendPaused}" ToolTip.Tip="暫停畫面更新（資料仍持續接收）" />
+                            <Button Content="清除" Command="{Binding ClearTrendCommand}" />
+                            <Rectangle Width="1" Fill="{DynamicResource PmuCardBorder}" Margin="4,2" />
+                            <CheckBox Content="顯示告警門檻" IsChecked="{Binding Settings.Alarm.Enabled}" />
+                            <TextBlock Classes="muted" VerticalAlignment="Center"
+                                       Text="門檻值可在「設定」頁調整。趨勢只記錄目前選取的站台，切換站台會重新開始。" />
+                        </StackPanel>
+                    </Border>
+                    <Grid RowDefinitions="*,*" RowSpacing="12">
+                        <Border Classes="card" Padding="8">
+                            <c:TrendChart Buffer="{Binding Trend}" Series="0" Version="{Binding TrendVersion}"
+                                          WindowSeconds="{Binding TrendWindowSeconds}" Title="頻率" Unit="Hz"
+                                          Decimals="{Binding Settings.Ui.FrequencyDecimals}"
+                                          UpperLimit="{Binding Settings.Alarm.FrequencyHighLimit}" LowerLimit="{Binding Settings.Alarm.FrequencyLowLimit}"
+                                          ShowLimits="{Binding Settings.Alarm.Enabled}"
+                                          LineBrush="{DynamicResource PmuFreqLine}" GridBrush="{DynamicResource PmuGrid}"
+                                          TextBrush="{DynamicResource PmuMuted}" LimitBrush="{DynamicResource PmuBad}" />
+                        </Border>
+                        <Border Grid.Row="1" Classes="card" Padding="8">
+                            <c:TrendChart Buffer="{Binding Trend}" Series="1" Version="{Binding TrendVersion}"
+                                          WindowSeconds="{Binding TrendWindowSeconds}" Title="ROCOF" Unit="Hz/s"
+                                          Decimals="{Binding Settings.Ui.FrequencyDecimals}"
+                                          UpperLimit="{Binding RocofThreshold}" LowerLimit="{Binding RocofLowerLimit}"
+                                          ShowLimits="{Binding Settings.Alarm.Enabled}"
+                                          LineBrush="{DynamicResource PmuRocofLine}" GridBrush="{DynamicResource PmuGrid}"
+                                          TextBrush="{DynamicResource PmuMuted}" LimitBrush="{DynamicResource PmuBad}" />
+                        </Border>
+                    </Grid>
+                </DockPanel>
+            </TabItem>
+
+            <!-- ───── 類比與 DI ───── -->
+            <TabItem Header="類比 / 數位">
+                <Grid Margin="6,10,6,4" ColumnDefinitions="2*,3*" ColumnSpacing="12">
+                    <Border Classes="card">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,8">
+                                <TextBlock Classes="cardTitle" Text="類比量" />
+                                <TextBlock Classes="muted" TextWrapping="Wrap" Text="顯示 PMU 送來的原始值，不做換算（比例因子的意義依 PMU 設定）。" />
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Top" Classes="muted" Text="此站台沒有類比通道" IsVisible="{Binding !HasAnalogs}" />
+                            <ScrollViewer>
+                                <ItemsControl ItemsSource="{Binding AnalogList}" Margin="0,0,16,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:AnalogItem">
+                                            <Grid ColumnDefinitions="*,130,150" Height="32">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ValueText}" Classes="mono" FontSize="14"
+                                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="2" Text="{Binding UnitText}" Classes="muted"
+                                                           HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Classes="card">
+                        <DockPanel>
+                            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="cardTitle" Text="數位輸入 (DI)" />
+                                    <TextBlock Classes="muted" Text="{Binding DigitalSummary}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding DigitalOnlyValid}" OnContent="只顯示啟用的點" OffContent="顯示全部 16 bit" />
+                            </Grid>
+                            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="14" Margin="0,8,0,0">
+                                <StackPanel Orientation="Horizontal" Spacing="5"><Border Classes="led on" /><TextBlock Classes="muted" Text="ON" /></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="5"><Border Classes="led" /><TextBlock Classes="muted" Text="OFF" /></StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="5"><Border Classes="led abnormal" /><TextBlock Classes="muted" Text="異常（與 DIGUNIT 正常狀態不同）" /></StackPanel>
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Top" Classes="muted" Text="此站台沒有 DI 狀態字" IsVisible="{Binding !HasDigitals}" />
+                            <ScrollViewer>
+                                <ItemsControl ItemsSource="{Binding DigitalList}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:DigitalItem">
+                                            <Border Classes="diTile" Classes.disabled="{Binding !Valid}">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                    <Border Classes="led" Classes.on="{Binding Value}" Classes.abnormal="{Binding Abnormal}" />
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                                                        <TextBlock Classes="muted" Text="{Binding Position}" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Classes="mono" Text="{Binding StateText}" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ───── 設定檔 CFG-2 ───── -->
+            <TabItem Header="設定檔 CFG-2">
+                <Grid Margin="6,10,6,4">
+                    <TextBlock Classes="muted" Text="連線後會在這裡顯示 PMU 送來的設定檔 (CFG-2)。" IsVisible="{Binding !HasCfg}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Grid IsVisible="{Binding HasCfg}" ColumnDefinitions="*,*" ColumnSpacing="12">
+                        <ScrollViewer>
+                            <StackPanel Spacing="12">
+                                <Border Classes="card">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Classes="cardTitle" Text="設定檔摘要" />
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                                <Button Content="📋 複製摘要" Padding="10,3" FontSize="12" Command="{Binding CopyCfgSummaryCommand}" />
+                                                <Button Content="💾 匯出原始 CFG-2" Padding="10,3" FontSize="12" Command="{Binding ExportCfgRawCommand}"
+                                                        ToolTip.Tip="存成 .bin，可用 C37Comm.Protocol 的 Cfg2Parser 離線解析" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+                                            <TextBlock Classes="muted" Text="協定版本" />
+                                            <TextBlock Grid.Column="1" Text="{Binding ProtocolText}" />
+                                            <TextBlock Grid.Row="1" Classes="muted" Text="資料速率" />
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DataRateText}" />
+                                            <TextBlock Grid.Row="2" Classes="muted" Text="TIME_BASE" />
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TimeBaseText}" />
+                                            <TextBlock Grid.Row="3" Classes="muted" Text="站台數 (NUM_PMU)" />
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding NumPmuText}" />
+                                            <TextBlock Grid.Row="4" Classes="muted" Text="Data Frame 長度" />
+                                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FrameSizeText}" />
+                                            <TextBlock Grid.Row="5" Classes="muted" Text="取得原因" />
+                                            <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding CfgTriggerText}" />
+                                            <TextBlock Grid.Row="6" Classes="muted" Text="取得時間" />
+                                            <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding CfgReceivedText}" />
+                                            <TextBlock Grid.Row="7" Classes="muted" Text="CFG ID" />
+                                            <SelectableTextBlock Grid.Row="7" Grid.Column="1" Classes="mono" Text="{Binding CfgIdText}"
+                                                                 ToolTip.Tip="由 CFG 內容推導；內容相同就是同一個 ID" />
+                                            <TextBlock Grid.Row="8" Classes="muted" Text="SHA-256 指紋" />
+                                            <SelectableTextBlock Grid.Row="8" Grid.Column="1" Classes="mono" Text="{Binding CfgFingerprint}" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Classes="card">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Classes="cardTitle" Text="{Binding CfgChangeCount, StringFormat='設定檔變更紀錄（本次共取得 {0} 次）'}" />
+                                            <Button Grid.Column="1" Content="清除" Padding="10,3" FontSize="12" Command="{Binding ClearCfgDiffsCommand}" />
+                                        </Grid>
+                                        <TextBlock Classes="muted" TextWrapping="Wrap"
+                                                   Text="PMU 變更設定（STAT bit 10、長度不符、重連後內容不同）時，C37Comm 會自動重新取得 CFG-2，並在這裡列出差異。" />
+                                        <ItemsControl ItemsSource="{Binding CfgDiffs}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="local:CfgDiffItem">
+                                                    <Grid ColumnDefinitions="70,50,70,*" Margin="0,3">
+                                                        <TextBlock Classes="muted" Text="{Binding Time, StringFormat='HH:mm:ss'}" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Kind}" FontWeight="SemiBold" />
+                                                        <TextBlock Grid.Column="2" Classes="muted" Text="{Binding Station, StringFormat='站 {0}'}" />
+                                                        <StackPanel Grid.Column="3">
+                                                            <TextBlock Text="{Binding Item}" Classes="mono" />
+                                                            <TextBlock Classes="muted" TextWrapping="Wrap">
+                                                                <Run Text="{Binding OldValue}" />
+                                                                <Run Text=" → " />
+                                                                <Run Text="{Binding NewValue}" />
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Classes="muted" Text="（尚無變更）" IsVisible="{Binding !CfgDiffs.Count}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <Border Grid.Column="1" Classes="card">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Classes="cardTitle" Text="站台與通道" Margin="0,0,0,8" />
+                                <ScrollViewer>
+                                    <ItemsControl ItemsSource="{Binding CfgStations}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="local:CfgStationItem">
+                                                <Expander IsExpanded="True" HorizontalAlignment="Stretch" Margin="0,0,0,8">
+                                                    <Expander.Header>
+                                                        <TextBlock Text="{Binding Header}" FontWeight="SemiBold" />
+                                                    </Expander.Header>
+                                                    <StackPanel Spacing="6">
+                                                        <TextBlock Classes="muted" Text="{Binding Summary}" TextWrapping="Wrap" />
+                                                        <Border Background="{DynamicResource PmuCode}" CornerRadius="6" Padding="10,8">
+                                                            <ItemsControl ItemsSource="{Binding Channels}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate x:DataType="x:String">
+                                                                        <SelectableTextBlock Classes="mono" Text="{Binding}" />
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Expander>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ───── 通訊統計 ───── -->
+            <TabItem Header="通訊統計">
+                <Grid Margin="6,10,6,4" ColumnDefinitions="*,*" ColumnSpacing="12">
+                    <Border Classes="card">
+                        <DockPanel>
+                            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                                <StackPanel>
+                                    <TextBlock Classes="cardTitle" Text="C37Comm 接收統計" />
+                                    <TextBlock Classes="muted" Text="{Binding StatsSince}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="歸零" Padding="10,3" Command="{Binding ResetStatisticsCommand}"
+                                        ToolTip.Tip="以目前數值為基準重新計算（不影響連線）" />
+                            </Grid>
+                            <TextBlock DockPanel.Dock="Bottom" Classes="muted" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="橘色表示有錯誤計數。「處理太慢丟棄」持續增加時，請到「設定」頁把畫面更新週期調大。" />
+                            <ScrollViewer>
+                                <ItemsControl ItemsSource="{Binding StatItems}" Margin="0,0,16,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:StatItem">
+                                            <Grid ColumnDefinitions="150,*,110" Height="30" ToolTip.Tip="{Binding Description}">
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Classes="muted" Text="{Binding Description}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                                                <TextBlock Grid.Column="2" Classes="statValue" Classes.warn="{Binding IsWarning}"
+                                                           Text="{Binding ValueText}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+
+                    <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="12">
+                        <Border Classes="card">
+                            <StackPanel Spacing="6">
+                                <TextBlock Classes="cardTitle" Text="資料完整性與告警" />
+                                <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto" Margin="0,0,0,4">
+                                    <TextBlock Classes="muted" Text="連線時間" />
+                                    <TextBlock Grid.Column="1" Text="{Binding UptimeText}" />
+                                    <TextBlock Grid.Row="1" Classes="muted" Text="最後收到資料" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LastFrameAgeText}" />
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding MonitorItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="local:StatItem">
+                                            <Grid ColumnDefinitions="150,*,110" Height="30" ToolTip.Tip="{Binding Description}">
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Classes="muted" Text="{Binding Description}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" Margin="0,0,8,0" />
+                                                <TextBlock Grid.Column="2" Classes="statValue" Classes.warn="{Binding IsWarning}"
+                                                           Text="{Binding ValueText}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="1" Classes="card">
+                            <DockPanel>
+                                <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                                    <StackPanel>
+                                        <TextBlock Classes="cardTitle" Text="最新 Data Frame 原始碼" />
+                                        <TextBlock Classes="muted mono" Text="{Binding RawFrameInfo}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="📋 複製 HEX" Padding="10,3" FontSize="12" Command="{Binding CopyRawFrameCommand}" />
+                                </Grid>
+                                <Border Background="{DynamicResource PmuCode}" CornerRadius="6" Padding="10,8">
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                                        <SelectableTextBlock Classes="mono" Text="{Binding RawFrameHex}" />
+                                    </ScrollViewer>
+                                </Border>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- ───── 事件紀錄 ───── -->
+            <TabItem Header="{Binding EventsTabHeader}">
+                <DockPanel Margin="6,10,6,4">
+                    <Border DockPanel.Dock="Top" Classes="card" Padding="14,8" Margin="0,0,0,10">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="顯示" VerticalAlignment="Center" />
+                                <ComboBox Width="120" ItemsSource="{Binding EventFilterChoices}" SelectedIndex="{Binding EventFilterIndex}" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Width="260" Margin="12,0,0,0" Text="{Binding EventSearch}" PlaceholderText="🔍 搜尋內容或類別" />
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6">
+                                <Button Content="💾 匯出" Command="{Binding ExportEventsCommand}" />
+                                <Button Content="清除" Command="{Binding ClearEventsCommand}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border Classes="card" Padding="6">
+                        <ListBox ItemsSource="{Binding VisibleEvents}" Background="Transparent">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="local:EventLogItem">
+                                    <Grid ColumnDefinitions="100,60,70,*" ColumnSpacing="6">
+                                        <TextBlock Classes="mono muted" Text="{Binding TimeText}" VerticalAlignment="Center" />
+                                        <Border Grid.Column="1" Classes="lvl" Classes.warn="{Binding IsWarning}"
+                                                Classes.bad="{Binding IsBadLevel}" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding LevelText}" />
+                                        </Border>
+                                        <TextBlock Grid.Column="2" Classes="muted" Text="{Binding Category}" VerticalAlignment="Center" />
+                                        <SelectableTextBlock Grid.Column="3" Text="{Binding Message}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </DockPanel>
+            </TabItem>
+
+            <!-- ───── 設定 ───── -->
+            <TabItem Header="設定">
+                <DockPanel Margin="6,10,6,4">
+                    <Border DockPanel.Dock="Top" Classes="card" Padding="14,10" Margin="0,0,0,10">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Classes="accent" Content="💾 儲存 (Ctrl+S)" Command="{Binding SaveSettingsCommand}" />
+                                <Button Content="重新載入設定檔" Command="{Binding ReloadSettingsCommand}" />
+                                <Button Content="還原預設值" Command="{Binding ResetSettingsToDefaultsCommand}" />
+                                <Button Content="用記事本開啟設定檔" Command="{Binding OpenSettingsFileCommand}" />
+                                <Button Content="開啟程式資料夾" Command="{Binding OpenAppFolderCommand}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Classes="muted" Margin="16,0,0,0" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" Text="{Binding SettingsStatus}" />
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                            <StackPanel Spacing="12">
+                                <!-- 顯示 -->
+                                <Border Classes="card">
+                                    <StackPanel>
+                                        <TextBlock Classes="cardTitle" Text="畫面顯示" Margin="0,0,0,4" />
+                                        <TextBlock Classes="muted" Text="修改後立即生效；按「儲存」保留到下次開啟。" Margin="0,0,0,12" />
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="佈景主題" />
+                                            <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding ThemeChoices}" SelectedIndex="{Binding ThemeIndex}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="相角單位" />
+                                            <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding AngleUnitChoices}" SelectedIndex="{Binding AngleUnitIndex}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="時間戳時區" />
+                                            <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding TimeZoneChoices}" SelectedIndex="{Binding TimeZoneIndex}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="時間戳格式" />
+                                            <TextBox Grid.Column="1" Width="260" HorizontalAlignment="Left" Text="{Binding Settings.Ui.TimestampFormat}"
+                                                     ToolTip.Tip="例：HH:mm:ss.fff 或 yyyy-MM-dd HH:mm:ss.ffffff" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="振幅小數位數" />
+                                            <NumericUpDown Grid.Column="1" Width="140" HorizontalAlignment="Left" Minimum="0" Maximum="10" FormatString="0"
+                                                           Value="{Binding Settings.Ui.MagnitudeDecimals}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="相角小數位數" />
+                                            <NumericUpDown Grid.Column="1" Width="140" HorizontalAlignment="Left" Minimum="0" Maximum="10" FormatString="0"
+                                                           Value="{Binding Settings.Ui.AngleDecimals}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="頻率 / ROCOF 小數位數" />
+                                            <NumericUpDown Grid.Column="1" Width="140" HorizontalAlignment="Left" Minimum="0" Maximum="10" FormatString="0"
+                                                           Value="{Binding Settings.Ui.FrequencyDecimals}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="畫面更新週期 (ms)" />
+                                            <NumericUpDown Grid.Column="1" Width="140" HorizontalAlignment="Left" Minimum="10" Maximum="5000" Increment="10" FormatString="0"
+                                                           Value="{Binding RefreshIntervalMs}" ToolTip.Tip="只影響畫面，不影響接收" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="連線後預設站台" />
+                                            <NumericUpDown Grid.Column="1" Width="140" HorizontalAlignment="Left" Minimum="0" Maximum="1000" FormatString="0"
+                                                           Value="{Binding Settings.Ui.DefaultStationIndex}" ToolTip.Tip="從 0 開始" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="視窗標題" />
+                                            <TextBox Grid.Column="1" Width="260" HorizontalAlignment="Left" Text="{Binding Settings.Ui.WindowTitle}" /></Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 告警 -->
+                                <Border Classes="card">
+                                    <StackPanel>
+                                        <TextBlock Classes="cardTitle" Text="告警判斷" Margin="0,0,0,4" />
+                                        <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,0,0,12"
+                                                   Text="所有站台都會判斷，只有有效點 (IsValid) 列入。觸發與恢復都會寫入事件紀錄，KPI 卡片也會變紅。" />
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="啟用告警" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding Settings.Alarm.Enabled}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="ROCOF 門檻 (Hz/s)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="0.001" Maximum="100" Increment="0.05" FormatString="0.###"
+                                                           Value="{Binding RocofThreshold}" ToolTip.Tip="取絕對值比較" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="ROCOF 連續點數 N" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="1" Maximum="1000" FormatString="0"
+                                                           Value="{Binding Settings.Alarm.RocofConsecutivePoints}" ToolTip.Tip="連續 N 個有效點超過門檻才觸發，避免雜訊誤報" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="頻率上限 (Hz)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="0" Maximum="100" Increment="0.1" FormatString="0.###"
+                                                           Value="{Binding Settings.Alarm.FrequencyHighLimit}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="頻率下限 (Hz)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="0" Maximum="100" Increment="0.1" FormatString="0.###"
+                                                           Value="{Binding Settings.Alarm.FrequencyLowLimit}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="掉包 / 時間倒退偵測" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding Settings.Alarm.DetectGaps}" /></Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 錄製 -->
+                                <Border Classes="card">
+                                    <StackPanel>
+                                        <TextBlock Classes="cardTitle" Text="CSV 錄製" Margin="0,0,0,4" />
+                                        <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,0,0,12"
+                                                   Text="每個 Frame 一列、所有站台並排；CFG-2 改變時自動換新檔。下次開始錄製時生效。" />
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*,Auto"><TextBlock Text="資料夾" />
+                                            <TextBox Grid.Column="1" Text="{Binding Settings.Recording.Directory}" ToolTip.Tip="相對路徑以執行檔資料夾為準" />
+                                            <Button Grid.Column="2" Content="📂" Margin="6,0,0,0" Command="{Binding OpenRecordingFolderCommand}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="降頻：每 N 筆存 1 筆" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="1" Maximum="100000" FormatString="0"
+                                                           Value="{Binding Settings.Recording.EveryNthFrame}" ToolTip.Tip="1 = 全存；60 fps 設 60 約每秒一筆" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="只錄有效資料" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding Settings.Recording.OnlyValid}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="相量加錄實部 / 虛部" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding Settings.Recording.IncludeRectangular}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="170,*"><TextBlock Text="時間欄位使用 UTC" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding Settings.Recording.UseUtc}" OnContent="UTC" OffContent="本機時間" /></Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Spacing="12">
+                                <!-- 連線進階 -->
+                                <Border Classes="card">
+                                    <StackPanel>
+                                        <TextBlock Classes="cardTitle" Text="連線進階參數" Margin="0,0,0,4" />
+                                        <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,0,0,12"
+                                                   Text="對應 C37Comm.Client 的 PmuClientOptions，下次連線時生效。一般不需要修改。" />
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="開啟程式後自動連線" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding Settings.Connection.AutoConnect}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="TCP 連線逾時 (ms)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="100" Maximum="600000" Increment="500" FormatString="0"
+                                                           Value="{Binding Settings.Timeouts.ConnectTimeoutMs}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="無資料逾時 (ms)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="100" Maximum="600000" Increment="500" FormatString="0"
+                                                           Value="{Binding Settings.Timeouts.NoDataTimeoutMs}" ToolTip.Tip="開啟資料流後超過此時間沒收到 Data Frame 就斷線重連" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="CFG-2 請求逾時 (ms)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="100" Maximum="600000" Increment="500" FormatString="0"
+                                                           Value="{Binding Settings.Timeouts.CfgRequestTimeoutMs}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="CFG-2 重送次數" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="0" Maximum="100" FormatString="0"
+                                                           Value="{Binding Settings.Timeouts.CfgRequestRetries}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="第一次重連等待 (ms)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="0" Maximum="600000" Increment="500" FormatString="0"
+                                                           Value="{Binding Settings.Reconnect.InitialIntervalMs}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="重連等待倍率" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="1" Maximum="10" Increment="0.1" FormatString="0.0#"
+                                                           Value="{Binding Settings.Reconnect.BackoffMultiplier}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="重連等待上限 (ms)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="0" Maximum="3600000" Increment="1000" FormatString="0"
+                                                           Value="{Binding Settings.Reconnect.MaxIntervalMs}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="接收暫存上限 (Frame)" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="1" Maximum="1000000" Increment="256" FormatString="0"
+                                                           Value="{Binding Settings.Buffer.MaxPendingFrames}" ToolTip.Tip="超過時丟棄最舊的資料（計入「處理太慢丟棄」）" /></Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 診斷記錄 -->
+                                <Border Classes="card">
+                                    <StackPanel>
+                                        <TextBlock Classes="cardTitle" Text="診斷記錄檔" Margin="0,0,0,4" />
+                                        <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,0,0,12"
+                                                   Text="把 C37Comm 內部的連線、設定檔、錯誤訊息寫入檔案，連不上 PMU 時很有用。下次連線時生效。" />
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="寫入記錄檔" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding Settings.Logging.Enabled}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="最低等級" />
+                                            <ComboBox Grid.Column="1" Width="160" ItemsSource="{Binding LogLevelChoices}" SelectedIndex="{Binding LogLevelIndex}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*,Auto"><TextBlock Text="資料夾" />
+                                            <TextBox Grid.Column="1" Text="{Binding Settings.Logging.Directory}" />
+                                            <Button Grid.Column="2" Content="📂" Margin="6,0,0,0" Command="{Binding OpenLogFolderCommand}" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="檔名樣板" />
+                                            <TextBox Grid.Column="1" Text="{Binding Settings.Logging.FileNamePattern}" ToolTip.Tip="{}{date} 會替換成 yyyyMMdd" /></Grid>
+                                        <Grid Classes="setRow" ColumnDefinitions="190,*"><TextBlock Text="保留天數" />
+                                            <NumericUpDown Grid.Column="1" Width="160" HorizontalAlignment="Left" Minimum="0" Maximum="3650" FormatString="0"
+                                                           Value="{Binding Settings.Logging.RetentionDays}" ToolTip.Tip="0 = 永久保留" /></Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Classes="card">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Classes="cardTitle" Text="關於" />
+                                        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding FooterText}" />
+                                        <TextBlock Classes="muted" TextWrapping="Wrap" Text="通訊套件：C37Comm.Client 1.1.1 / C37Comm.Protocol 1.1.0（IEEE C37.118-2005 與 C37.118.2-2011）" />
+                                        <TextBlock Classes="muted" TextWrapping="Wrap" Text="命令列：PmuApp.exe --config D:\path\my.json 可指定其他設定檔，方便同時開多個視窗監看不同 PMU。" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>
