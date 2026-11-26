@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/.NET-10-512BD4" />
-  <img src="https://img.shields.io/badge/UI-Avalonia%2012-8B44AC" />
-  <img src="https://img.shields.io/badge/IEEE-C37.118--2005%20%2F%20.2--2011-0A7BBB" />
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-555" />
+  <img src="docs/badges/dotnet.svg" alt=".NET 10" />
+  <img src="docs/badges/avalonia.svg" alt="UI: Avalonia 12" />
+  <img src="docs/badges/ieee.svg" alt="IEEE C37.118-2005 / .2-2011" />
+  <img src="docs/badges/platform.svg" alt="platform: Windows | Linux | macOS" />
 </p>
 
 ![主畫面](docs/images/live.png)
